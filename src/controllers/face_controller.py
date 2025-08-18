@@ -37,6 +37,26 @@ def get_face_encoding_from_image(image_pil: Image.Image):
         return None
 
 
+# async def register_logic(images: List[UploadFile], user_payload: dict):
+#     username = user_payload.get("name")
+#     if not username:
+#         raise HTTPException(status_code=400, detail="Nama user tidak ditemukan di token.")
+
+#     user_dir = os.path.join(REGISTERED_FACES_DIR, username)
+#     os.makedirs(user_dir, exist_ok=True)
+
+#     for image_file in images:
+#         contents = await image_file.read()
+#         file_path = os.path.join(user_dir, image_file.filename)
+#         with open(file_path, "wb") as f:
+#             f.write(contents)
+
+#     train_result = await train_logic(user_payload)        
+
+#     return {"status": "success", "message": f"Foto wajah untuk '{username}' berhasil disimpan.", "train_result": train_result}
+
+
+
 async def register_logic(images: List[UploadFile], user_payload: dict):
     username = user_payload.get("name")
     if not username:
@@ -45,15 +65,37 @@ async def register_logic(images: List[UploadFile], user_payload: dict):
     user_dir = os.path.join(REGISTERED_FACES_DIR, username)
     os.makedirs(user_dir, exist_ok=True)
 
+    valid_count = 0
+
     for image_file in images:
         contents = await image_file.read()
+
+        try:
+            img_pil = Image.open(io.BytesIO(contents)).convert("RGB")
+            encoding = get_face_encoding_from_image(img_pil)
+
+            if encoding is None:
+                print(f" -> {image_file.filename} dilewati (tidak ada wajah / lebih dari 1 wajah).")
+                continue
+        except Exception as e:
+            print(f" -> {image_file.filename} gagal diproses: {e}")
+            continue
+
         file_path = os.path.join(user_dir, image_file.filename)
         with open(file_path, "wb") as f:
             f.write(contents)
+        valid_count += 1
 
-    train_result = await train_logic(user_payload)        
+    if valid_count == 0:
+        raise HTTPException(status_code=400, detail="Tidak ada foto valid dengan wajah tunggal.")
 
-    return {"status": "success", "message": f"Foto wajah untuk '{username}' berhasil disimpan.", "train_result": train_result}
+    train_result = await train_logic(user_payload)
+
+    return {
+        "status": "success",
+        "message": f"{valid_count} foto wajah untuk '{username}' berhasil disimpan.",
+        "train_result": train_result
+    }
 
 
 async def train_logic(user_payload: dict):
@@ -94,7 +136,7 @@ async def train_logic(user_payload: dict):
     with open(ENCODINGS_FILE, "wb") as f:
         pickle.dump({"encodings": encodings, "names": names}, f)
 
-    return {"status": "success", "message": f"Training incremental selesai. Total {len(encodings)} wajah dari {len(set(names))} orang."}
+    return {"status": "success", "message": "Training selesai"}
 
 
 
@@ -155,26 +197,26 @@ async def verify_logic(image_base64: str, user_payload: dict):
 
 
 
-async def verify_logic_with_blink(video_file: UploadFile, user_payload: dict):
-    temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".mp4")
-    temp_file.write(await video_file.read())
-    temp_file.close()
+# async def verify_logic_with_blink(video_file: UploadFile, user_payload: dict):
+#     temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".mp4")
+#     temp_file.write(await video_file.read())
+#     temp_file.close()
 
-    if not detect_blink(temp_file.name):
-        raise HTTPException(status_code=400, detail="Kedip tidak terdeteksi, verifikasi gagal.")    
+#     if not detect_blink(temp_file.name):
+#         raise HTTPException(status_code=400, detail="Kedip tidak terdeteksi, verifikasi gagal.")    
     
-    cap = cv2.VideoCapture(temp_file.name)
-    success, frame = cap.read()
-    cap.release()
-    if not success:
-        raise HTTPException(status_code=400, detail="Gagal membaca frame dari video.")
+#     cap = cv2.VideoCapture(temp_file.name)
+#     success, frame = cap.read()
+#     cap.release()
+#     if not success:
+#         raise HTTPException(status_code=400, detail="Gagal membaca frame dari video.")
 
-    img_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-    img_pil = Image.fromarray(img_rgb)
+#     img_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+#     img_pil = Image.fromarray(img_rgb)
 
-    buffer = io.BytesIO()
-    img_pil.save(buffer, format="JPEG")
-    img_str = base64.b64encode(buffer.getvalue()).decode("utf-8")
-    image_base64 = f"data:image/jpeg;base64,{img_str}"
+#     buffer = io.BytesIO()
+#     img_pil.save(buffer, format="JPEG")
+#     img_str = base64.b64encode(buffer.getvalue()).decode("utf-8")
+#     image_base64 = f"data:image/jpeg;base64,{img_str}"
 
-    return await verify_logic(image_base64, user_payload)
+#     return await verify_logic(image_base64, user_payload)

@@ -10,8 +10,8 @@ app = FastAPI(
 )
 
 origins = [
-    "http://localhost:5173", 
-    "http://localhost:5000", 
+    "https://eshrm.jcode.my.id", 
+    "https://eshrm-backend.jcode.my.id", 
 ]
 
 app.add_middleware(
