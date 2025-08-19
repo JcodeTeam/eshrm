@@ -22,7 +22,3 @@ async def register_face(images: List[UploadFile] = File(...), user_payload: dict
 async def trigger_training(user_payload: dict = Depends(authorize)):
 
     return await face_controller.train_logic(user_payload)
-
-@router.delete("/users/{username}")
-async def delete_user(username: str):
-    return await face_controller.delete_user_logic(username)

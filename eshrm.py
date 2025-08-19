@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 from src.middlewares.middleware import cors
 from src.routes import face_routes
+from src.routes import user_routes
 
 
 app = FastAPI(
@@ -12,6 +13,7 @@ app = FastAPI(
 cors(app)
 
 app.include_router(face_routes.router)
+app.include_router(user_routes.router)
 
 @app.get("/", tags=["Root"])
 def read_root():
