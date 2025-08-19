@@ -1,13 +1,8 @@
-import os
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from jose import JWTError, jwt
-from dotenv import load_dotenv
+from src.config.env import JWT_SECRET, ALGORITHM
 
-load_dotenv()
-
-JWT_SECRET = os.getenv("JWT_SECRET")
-ALGORITHM = os.getenv("ALGORITHM") 
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
 

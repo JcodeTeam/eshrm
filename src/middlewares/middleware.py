@@ -1,14 +1,11 @@
 from fastapi.middleware.cors import CORSMiddleware
+from src.config.env import FRONTEND_URL, BACKEND_URL
 
 def cors(app):
-    origins = [
-        "https://eshrm.jcode.my.id", 
-        "https://eshrm-backend.jcode.my.id", 
-    ]
 
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=origins,
+        allow_origins=[FRONTEND_URL, BACKEND_URL],
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
