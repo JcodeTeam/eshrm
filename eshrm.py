@@ -1,26 +1,15 @@
 from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
+from src.middlewares.middleware import cors
 from src.routes import face_routes
 
 
 app = FastAPI(
     title="API Absensi Wajah",
-    description="API untuk registrasi, training, dan pengenalan wajah menggunakan LBPH.",
+    description="API untuk registrasi, training, dan pengenalan wajah.",
     version="1.0.0"
 )
 
-origins = [
-    "https://eshrm.jcode.my.id", 
-    "https://eshrm-backend.jcode.my.id", 
-]
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=origins,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+cors(app)
 
 app.include_router(face_routes.router)
 

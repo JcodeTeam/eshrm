@@ -1,4 +1,6 @@
 # app
+data/faces
+trainer/*.pkl
 .env.*.local
 /.env
 

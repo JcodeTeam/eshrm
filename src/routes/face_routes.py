@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Form, File, UploadFile, Depends
 from typing import List
 from src.controllers import face_controller
-from src.middleware.middleware import authorize
+from src.middlewares.auth_middleware import authorize
 
 router = APIRouter(
     prefix="/api",
@@ -23,6 +23,6 @@ async def trigger_training(user_payload: dict = Depends(authorize)):
 
     return await face_controller.train_logic(user_payload)
 
-@router.post("/verify-blink")
-async def verify_with_blink(video: UploadFile = File(...), user_payload: dict = Depends(authorize)):
-    return await face_controller.verify_logic_with_blink(video, user_payload)
+@router.delete("/users/{username}")
+async def delete_user(username: str):
+    return await face_controller.delete_user_logic(username)

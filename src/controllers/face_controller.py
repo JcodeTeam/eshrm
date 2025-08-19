@@ -1,16 +1,12 @@
-
 import os
 import io
-import cv2
 import pickle
 import base64
 import numpy as np
 from PIL import Image
-import tempfile
 from fastapi import UploadFile, HTTPException
 from typing import List
 import face_recognition
-from .check import detect_blink
 
 REGISTERED_FACES_DIR = "data/faces"
 ENCODINGS_FILE = "trainer/face_encodings.pkl" 
@@ -35,27 +31,7 @@ def get_face_encoding_from_image(image_pil: Image.Image):
     except Exception as e:
         print(f"Error saat encoding wajah: {e}")
         return None
-
-
-# async def register_logic(images: List[UploadFile], user_payload: dict):
-#     username = user_payload.get("name")
-#     if not username:
-#         raise HTTPException(status_code=400, detail="Nama user tidak ditemukan di token.")
-
-#     user_dir = os.path.join(REGISTERED_FACES_DIR, username)
-#     os.makedirs(user_dir, exist_ok=True)
-
-#     for image_file in images:
-#         contents = await image_file.read()
-#         file_path = os.path.join(user_dir, image_file.filename)
-#         with open(file_path, "wb") as f:
-#             f.write(contents)
-
-#     train_result = await train_logic(user_payload)        
-
-#     return {"status": "success", "message": f"Foto wajah untuk '{username}' berhasil disimpan.", "train_result": train_result}
-
-
+    
 
 async def register_logic(images: List[UploadFile], user_payload: dict):
     username = user_payload.get("name")
@@ -139,10 +115,6 @@ async def train_logic(user_payload: dict):
     return {"status": "success", "message": "Training selesai"}
 
 
-
-
-
-
 async def verify_logic(image_base64: str, user_payload: dict):
     if not os.path.exists(ENCODINGS_FILE):
         raise HTTPException(status_code=400, detail="Model belum dilatih. Hapus file .pkl lama dan jalankan /train.")
@@ -192,31 +164,3 @@ async def verify_logic(image_base64: str, user_payload: dict):
             "distance": float(min_distance)
         }
     
-
-
-
-
-
-# async def verify_logic_with_blink(video_file: UploadFile, user_payload: dict):
-#     temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".mp4")
-#     temp_file.write(await video_file.read())
-#     temp_file.close()
-
-#     if not detect_blink(temp_file.name):
-#         raise HTTPException(status_code=400, detail="Kedip tidak terdeteksi, verifikasi gagal.")    
-    
-#     cap = cv2.VideoCapture(temp_file.name)
-#     success, frame = cap.read()
-#     cap.release()
-#     if not success:
-#         raise HTTPException(status_code=400, detail="Gagal membaca frame dari video.")
-
-#     img_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-#     img_pil = Image.fromarray(img_rgb)
-
-#     buffer = io.BytesIO()
-#     img_pil.save(buffer, format="JPEG")
-#     img_str = base64.b64encode(buffer.getvalue()).decode("utf-8")
-#     image_base64 = f"data:image/jpeg;base64,{img_str}"
-
-#     return await verify_logic(image_base64, user_payload)
