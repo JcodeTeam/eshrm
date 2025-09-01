@@ -3,6 +3,7 @@ data/faces
 trainer/*.pkl
 .env.*.local
 /.env
+main.ipynb
 
 
 
