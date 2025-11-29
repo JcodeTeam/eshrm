@@ -1,20 +1,37 @@
 from fastapi import FastAPI
-from src.middlewares.middleware import cors
+from fastapi.middleware.cors import CORSMiddleware
 from src.routes import face_routes
-from src.routes import user_routes
 
+# Inisialisasi Aplikasi
+app = FastAPI(title="ESHRM Face Engine")
 
-app = FastAPI(
-    title="API Absensi Wajah",
-    description="API untuk registrasi, training, dan pengenalan wajah.",
-    version="1.0.0"
+# --- BAGIAN INI MENGGANTIKAN IMPORT YANG ERROR ---
+# Konfigurasi CORS agar Frontend (Vite) bisa akses
+origins = [
+    "http://localhost:5173",    # Frontend Default
+    "http://127.0.0.1:5173",
+    "http://localhost:5000",    # Backend Express
+    "*"                         # Izinkan semua (untuk development)
+]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
+# -------------------------------------------------
 
-cors(app)
-
+# Masukkan Router Wajah
 app.include_router(face_routes.router)
-app.include_router(user_routes.router)
 
-@app.get("/", tags=["Root"])
+# Endpoint Test Sederhana
+@app.get("/")
 def read_root():
-    return {"message": "Selamat datang di API Absensi Wajah. Kunjungi /docs untuk dokumentasi."}
+    return {"status": "Engine is running!", "docs": "/docs"}
+
+# Opsional: Biar bisa dijalankan dengan "python eshrm.py"
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run("eshrm:app", host="0.0.0.0", port=8000, reload=True)
