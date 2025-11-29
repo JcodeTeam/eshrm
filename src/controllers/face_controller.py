@@ -7,9 +7,78 @@ from PIL import Image
 from fastapi import UploadFile, HTTPException
 from typing import List
 import face_recognition
+import requests
+
+# Optional Cloudinary support for storing face images and encodings (recommended on Render)
+import cloudinary
+from cloudinary import uploader, api, utils
+
+# Read cloudinary config from environment
+USE_CLOUDINARY = os.getenv("USE_CLOUDINARY", "false").lower() == "true"
+if USE_CLOUDINARY:
+    cloud_name = os.getenv("CLOUDINARY_CLOUD_NAME")
+    api_key = os.getenv("CLOUDINARY_API_KEY")
+    api_secret = os.getenv("CLOUDINARY_API_SECRET")
+    cloudinary.config(
+        cloud_name=cloud_name,
+        api_key=api_key,
+        api_secret=api_secret,
+        secure=True,
+    )
 
 REGISTERED_FACES_DIR = "data/faces"
 ENCODINGS_FILE = "trainer/face_encodings.pkl" 
+
+
+def _cloudinary_upload_image(bytes_data: bytes, public_id: str, folder: str):
+    """Upload image bytes to Cloudinary under given folder with public_id.
+    Returns the uploaded resource dict.
+    """
+    res = uploader.upload(
+        io.BytesIO(bytes_data),
+        public_id=public_id,
+        folder=folder,
+        resource_type="image",
+        overwrite=True,
+    )
+    return res
+
+
+def _cloudinary_list_images_for_user(username: str):
+    prefix = f"faces/{username}"
+    # Cloudinary paginates; fetch first page (usually fine for small datasets)
+    try:
+        res = api.resources(type="upload", resource_type="image", prefix=prefix, max_results=500)
+        return res.get("resources", [])
+    except Exception as e:
+        print(f"Cloudinary list error: {e}")
+        return []
+
+
+def _cloudinary_download_url(url: str) -> bytes:
+    r = requests.get(url, timeout=30)
+    r.raise_for_status()
+    return r.content
+
+
+def _cloudinary_upload_encodings(pickle_bytes: bytes, public_id: str = "trainer/face_encodings"):
+    # upload as raw so we can download later
+    res = uploader.upload(
+        io.BytesIO(pickle_bytes),
+        public_id=public_id,
+        resource_type="raw",
+        overwrite=True,
+    )
+    return res
+
+
+def _cloudinary_get_encodings_url(public_id: str = "trainer/face_encodings") -> str | None:
+    try:
+        url, _ = utils.cloudinary_url(public_id, resource_type="raw", format="pkl")
+        return url
+    except Exception as e:
+        print(f"Cloudinary get encodings url error: {e}")
+        return None
 
 def get_face_encoding_from_image(image_pil: Image.Image):
 
@@ -57,9 +126,18 @@ async def register_logic(images: List[UploadFile], user_payload: dict):
             print(f" -> {image_file.filename} gagal diproses: {e}")
             continue
 
-        file_path = os.path.join(user_dir, image_file.filename)
-        with open(file_path, "wb") as f:
-            f.write(contents)
+        if USE_CLOUDINARY:
+            # upload to Cloudinary under faces/<username>
+            pub_id = os.path.splitext(image_file.filename)[0]
+            try:
+                _cloudinary_upload_image(contents, public_id=pub_id, folder=f"faces/{username}")
+            except Exception as e:
+                print(f" -> Gagal upload ke Cloudinary: {e}")
+                continue
+        else:
+            file_path = os.path.join(user_dir, image_file.filename)
+            with open(file_path, "wb") as f:
+                f.write(contents)
         valid_count += 1
 
     if valid_count == 0:
@@ -81,47 +159,102 @@ async def train_logic(user_payload: dict):
     encodings = []
     names = []
 
-    if os.path.exists(ENCODINGS_FILE):
-        with open(ENCODINGS_FILE, "rb") as f:
-            data = pickle.load(f)
-            encodings = data["encodings"]
-            names = data["names"]
+    # Load existing encodings (from local or Cloudinary)
+    if USE_CLOUDINARY:
+        # try to download encodings raw file from Cloudinary
+        enc_url = _cloudinary_get_encodings_url()
+        if enc_url:
+            try:
+                enc_bytes = _cloudinary_download_url(enc_url)
+                data = pickle.loads(enc_bytes)
+                encodings = data.get("encodings", [])
+                names = data.get("names", [])
+            except Exception as e:
+                print(f"Gagal memuat encodings dari Cloudinary: {e}")
+    else:
+        if os.path.exists(ENCODINGS_FILE):
+            with open(ENCODINGS_FILE, "rb") as f:
+                data = pickle.load(f)
+                encodings = data["encodings"]
+                names = data["names"]
 
-    person_folder = os.path.join(REGISTERED_FACES_DIR, username)
-    if not os.path.isdir(person_folder):
-        raise HTTPException(status_code=404, detail=f"Tidak ada folder untuk user {username}")
+    # Gather images either from local folder or Cloudinary
+    if USE_CLOUDINARY:
+        resources = _cloudinary_list_images_for_user(username)
+        if not resources:
+            raise HTTPException(status_code=404, detail=f"Tidak ada folder untuk user {username} di Cloudinary")
+        for res in resources:
+            url = res.get("secure_url")
+            try:
+                img_bytes = _cloudinary_download_url(url)
+                img_pil = Image.open(io.BytesIO(img_bytes)).convert("RGB")
+                encoding = get_face_encoding_from_image(img_pil)
+                if encoding is not None:
+                    encodings.append(encoding)
+                    names.append(username)
+                else:
+                    print(f"  -> Melewati gambar {res.get('public_id')} (tidak ada wajah / >1 wajah).")
+            except Exception as e:
+                print(f"  -> Gagal memproses {res.get('public_id')}: {e}")
+    else:
+        person_folder = os.path.join(REGISTERED_FACES_DIR, username)
+        if not os.path.isdir(person_folder):
+            raise HTTPException(status_code=404, detail=f"Tidak ada folder untuk user {username}")
 
-    for img_name in os.listdir(person_folder):
-        img_path = os.path.join(person_folder, img_name)
-        try:
-            img_pil = Image.open(img_path).convert("RGB")
-            encoding = get_face_encoding_from_image(img_pil)
+        for img_name in os.listdir(person_folder):
+            img_path = os.path.join(person_folder, img_name)
+            try:
+                img_pil = Image.open(img_path).convert("RGB")
+                encoding = get_face_encoding_from_image(img_pil)
 
-            if encoding is not None:
-                encodings.append(encoding)
-                names.append(username)
-            else:
-                print(f"  -> Melewati gambar {img_name} (tidak ada wajah / >1 wajah).")
-        except Exception as e:
-            print(f"  -> Gagal membuka atau memproses {img_name}: {e}")
+                if encoding is not None:
+                    encodings.append(encoding)
+                    names.append(username)
+                else:
+                    print(f"  -> Melewati gambar {img_name} (tidak ada wajah / >1 wajah).")
+            except Exception as e:
+                print(f"  -> Gagal membuka atau memproses {img_name}: {e}")
 
     if not encodings:
         raise HTTPException(status_code=500, detail="Tidak ada wajah valid untuk ditambahkan.")
 
-    os.makedirs(os.path.dirname(ENCODINGS_FILE), exist_ok=True)
-    with open(ENCODINGS_FILE, "wb") as f:
-        pickle.dump({"encodings": encodings, "names": names}, f)
+    # Save encodings locally or upload to Cloudinary as raw file
+    pickled = pickle.dumps({"encodings": encodings, "names": names})
+    if USE_CLOUDINARY:
+        try:
+            _cloudinary_upload_encodings(pickled, public_id="trainer/face_encodings")
+        except Exception as e:
+            print(f"Gagal mengupload encodings ke Cloudinary: {e}")
+            # fallback: save locally
+            os.makedirs(os.path.dirname(ENCODINGS_FILE), exist_ok=True)
+            with open(ENCODINGS_FILE, "wb") as f:
+                f.write(pickled)
+    else:
+        os.makedirs(os.path.dirname(ENCODINGS_FILE), exist_ok=True)
+        with open(ENCODINGS_FILE, "wb") as f:
+            f.write(pickled)
 
     return {"status": "success", "message": "Training selesai"}
 
 
 async def verify_logic(image_base64: str, user_payload: dict):
-    if not os.path.exists(ENCODINGS_FILE):
-        raise HTTPException(status_code=400, detail="Model belum dilatih. Hapus file .pkl lama dan jalankan /train.")
+    # Load encodings either from Cloudinary (raw) or local file
+    data = None
+    if USE_CLOUDINARY:
+        enc_url = _cloudinary_get_encodings_url()
+        if not enc_url:
+            raise HTTPException(status_code=400, detail="Model belum dilatih di Cloudinary. Jalankan /train.")
+        try:
+            enc_bytes = _cloudinary_download_url(enc_url)
+            data = pickle.loads(enc_bytes)
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Gagal memuat model dari Cloudinary: {e}")
+    else:
+        if not os.path.exists(ENCODINGS_FILE):
+            raise HTTPException(status_code=400, detail="Model belum dilatih. Hapus file .pkl lama dan jalankan /train.")
+        with open(ENCODINGS_FILE, "rb") as f:
+            data = pickle.load(f)
 
-    with open(ENCODINGS_FILE, "rb") as f:
-        data = pickle.load(f)
-    
     all_encodings = np.array(data["encodings"])
     all_names = np.array(data["names"])
 
