@@ -26,8 +26,9 @@ app.add_middleware(
 # Masukkan Router Wajah
 app.include_router(face_routes.router)
 
-# Endpoint Test Sederhana
-@app.get("/")
+# Endpoint Test Sederhana (support GET dan HEAD untuk health check)
+@app.get("/", include_in_schema=True)
+@app.head("/")
 def read_root():
     return {"status": "Engine is running!", "docs": "/docs"}
 
