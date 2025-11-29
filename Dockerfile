@@ -1,4 +1,4 @@
-FROM python:3.11-slim
+FROM python:3.10-slim
 
 # Install system deps needed by dlib/face_recognition and pillow
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -18,7 +18,8 @@ COPY . /app
 
 # Upgrade pip and install Python deps
 RUN pip install --upgrade pip setuptools wheel
-RUN pip install --no-cache-dir -r requirements.txt
+# Install only production dependencies to avoid heavy ML libs and resolution conflicts
+RUN pip install --no-cache-dir -r requirements.prod.txt
 
 EXPOSE 8000
 CMD ["uvicorn", "eshrm:app", "--host", "0.0.0.0", "--port", "8000"]
