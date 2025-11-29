@@ -17,7 +17,9 @@ RUN pip install --no-cache-dir \
     face_recognition_models==0.3.0 \
     cloudinary==1.29.0 \
     requests==2.32.4 \
-    python-dotenv==1.1.1
+    python-dotenv==1.1.1 \
+    python-jose==3.5.0 \
+    passlib==1.7.4
 
 EXPOSE 8000
 CMD ["uvicorn", "eshrm:app", "--host", "0.0.0.0", "--port", "8000"]
