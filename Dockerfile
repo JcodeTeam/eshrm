@@ -1,25 +1,23 @@
-FROM python:3.10-slim
+FROM continuumio/miniconda3:latest
 
-# Install system deps needed by dlib/face_recognition and pillow
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential \
-    cmake \
-    libopenblas-dev \
-    liblapack-dev \
-    libx11-dev \
-    libgtk-3-dev \
-    libboost-all-dev \
-    git \
-    wget \
-    && rm -rf /var/lib/apt/lists/*
+# Install dlib from conda-forge (prebuilt, no compile) + pip packages
+RUN conda install -y -c conda-forge python=3.10 dlib=19.24 && \
+    conda clean -afy
 
 WORKDIR /app
 COPY . /app
 
-# Upgrade pip and install Python deps
-RUN pip install --upgrade pip setuptools wheel
-# Install only production dependencies to avoid heavy ML libs and resolution conflicts
-RUN pip install --no-cache-dir -r requirements.prod.txt
+# Install remaining dependencies via pip
+RUN pip install --no-cache-dir \
+    fastapi==0.116.1 \
+    uvicorn==0.18.3 \
+    numpy==1.24.4 \
+    Pillow==11.3.0 \
+    face-recognition==1.3.0 \
+    face_recognition_models==0.3.0 \
+    cloudinary==1.29.0 \
+    requests==2.32.4 \
+    python-dotenv==1.1.1
 
 EXPOSE 8000
 CMD ["uvicorn", "eshrm:app", "--host", "0.0.0.0", "--port", "8000"]
