@@ -2,6 +2,7 @@ import os
 import io
 import pickle
 import base64
+import traceback
 import numpy as np
 from PIL import Image
 from fastapi import UploadFile, HTTPException
@@ -268,32 +269,45 @@ async def verify_logic(image_base64: str, user_payload: dict):
     
     user_encodings = all_encodings[user_mask]
 
+    # Wrap the rest in try/except to capture unexpected errors and print a traceback
+    # This will help debugging why we previously got 500 without details.
     try:
         if "," in image_base64:
             image_base64 = image_base64.split(',')[1]
         img_data = base64.b64decode(image_base64)
         img_pil = Image.open(io.BytesIO(img_data)).convert("RGB")
+
+        input_encoding = get_face_encoding_from_image(img_pil)
+        if input_encoding is None:
+            raise HTTPException(status_code=400, detail="Wajah tidak dapat dideteksi atau terdeteksi lebih dari satu wajah pada gambar input.")
+
+        distances = face_recognition.face_distance(user_encodings, input_encoding)
+
+        # distances may be empty or malformed; guard against NumPy errors
+        if distances is None or len(distances) == 0:
+            raise HTTPException(status_code=500, detail="Tidak ada encoding wajah yang dapat dibandingkan untuk user ini.")
+
+        min_distance = np.min(distances)
+
+        threshold = 0.5
+        if min_distance < threshold:
+            return {
+                "verified": True,
+                "message": f"Verifikasi berhasil untuk {user_name}!",
+                "distance": float(min_distance)
+            }
+        else:
+            return {
+                "verified": False,
+                "message": "Wajah tidak cocok.",
+                "distance": float(min_distance)
+            }
+    except HTTPException:
+        # Reraise HTTPExceptions (client errors / expected validation)
+        raise
     except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Gagal memproses gambar base64: {e}")
-
-    input_encoding = get_face_encoding_from_image(img_pil)
-    if input_encoding is None:
-        raise HTTPException(status_code=400, detail="Wajah tidak dapat dideteksi atau terdeteksi lebih dari satu wajah pada gambar input.")
-
-    distances = face_recognition.face_distance(user_encodings, input_encoding)
-    min_distance = np.min(distances)
-
-    threshold = 0.5
-    if min_distance < threshold:
-        return {
-            "verified": True,
-            "message": f"Verifikasi berhasil untuk {user_name}!",
-            "distance": float(min_distance)
-        }
-    else:
-        return {
-            "verified": False,
-            "message": "Wajah tidak cocok.",
-            "distance": float(min_distance)
-        }
+        # Print traceback to server logs for debugging, then return a 500 with a helpful message
+        print("--- Exception in verify_logic ---")
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Internal server error during face verify: {e}")
     

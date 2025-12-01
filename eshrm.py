@@ -11,7 +11,12 @@ origins = [
     "http://localhost:5173",    # Frontend Default
     "http://127.0.0.1:5173",
     "http://localhost:5000",    # Backend Express
-    "*"                         # Izinkan semua (untuk development)
+    "http://localhost:5000", 
+    # NOTE: Untuk production, jangan gunakan "*" ketika allow_credentials=True.
+    # Tambahkan domain frontend productionmu di bawah ini, misal:
+    # "https://app.your-frontend-domain.com",
+    # Jika kamu sedang development dan butuh membuka semua origin, set explicit
+    # domains or temporarily allow '*' but set allow_credentials=False.
 ]
 
 app.add_middleware(
